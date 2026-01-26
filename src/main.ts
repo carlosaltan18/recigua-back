@@ -14,7 +14,6 @@ async function bootstrap() {
   // Prefijo global para todas las rutas
   app.setGlobalPrefix('api');
 
-  // Validación global de DTOs
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -28,6 +27,6 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3000;
   await app.listen(port);
-  console.log(`🚀 Aplicación corriendo en: http://localhost:${port}/api`);
+  console.log(`Aplicación corriendo en: http://localhost:${port}/api`);
 }
 bootstrap();
