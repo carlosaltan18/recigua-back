@@ -1,12 +1,18 @@
 import { Entity, Column, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
-@Entity('config')
-export class Config {
+@Entity('system_config')
+export class SystemConfig {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ type: 'decimal', precision: 5, scale: 2, default: 5.00, name: 'porcentaje_adicional' })
-  porcentajeAdicional: number;
+  @Column({
+    type: 'decimal',
+    precision: 5,
+    scale: 2,
+    default: 5.0,
+    name: 'extra_percentage',
+  })
+  extraPercentage: number;
 
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
