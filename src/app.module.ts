@@ -6,10 +6,11 @@ import { UsersModule } from './modules/users/user.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { ReportModule } from './modules/report/report.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
+import { ProductModule } from './modules/products/product.module';
+
 
 
 /* 
-import { ProductosModule } from './modules/productos/productos.module';
 import { ConfigModuleApp } from './modules/config/config.module';
  */
 @Module({
@@ -47,8 +48,8 @@ import { ConfigModuleApp } from './modules/config/config.module';
     RolesModule,
     ReportModule,
     SuppliersModule,
+    ProductModule,
     /* 
-    ProductosModule,
     ConfigModuleApp, */
   ],
 })

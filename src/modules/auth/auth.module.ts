@@ -7,10 +7,11 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { UsersModule } from '../users/user.module';
+import { RolesGuard } from './guards/roles.guard';
 
 @Module({
     imports: [
-        UsersModule,
+        UsersModule, // 👈 necesario para UsersService
         PassportModule,
         JwtModule.registerAsync({
             imports: [ConfigModule],
@@ -25,8 +26,17 @@ import { UsersModule } from '../users/user.module';
             }),
         }),
     ],
-    providers: [AuthService, LocalStrategy, JwtStrategy],
+    providers: [
+        AuthService,
+        LocalStrategy,
+        JwtStrategy,
+        RolesGuard, // ✅ ACÁ
+    ],
     controllers: [AuthController],
-    exports: [AuthService],
+    exports: [
+        AuthService,
+        RolesGuard, // ✅ Y ACÁ
+        UsersModule, // Exportar UsersModule para que otros módulos puedan usar UsersService con RolesGuard
+    ],
 })
 export class AuthModule { }
