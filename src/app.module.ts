@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-/* import { AuthModule } from './modules/auth/auth.module';
-import { UsersModule } from './modules/users/users.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { UsersModule } from './modules/users/user.module';
 import { RolesModule } from './modules/roles/roles.module';
-import { ProveedoresModule } from './modules/proveedores/proveedores.module';
+import { ReportModule } from './modules/report/report.module';
+import { SuppliersModule } from './modules/suppliers/suppliers.module';
+
+
+/* 
 import { ProductosModule } from './modules/productos/productos.module';
-import { ReportesModule } from './modules/reportes/reportes.module';
 import { ConfigModuleApp } from './modules/config/config.module';
  */
 @Module({
@@ -20,6 +23,7 @@ import { ConfigModuleApp } from './modules/config/config.module';
     // Configuración de TypeORM con PostgreSQL
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
+      inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         type: 'postgres',
         host: configService.get('DATABASE_HOST'),
@@ -27,21 +31,25 @@ import { ConfigModuleApp } from './modules/config/config.module';
         username: configService.get('DATABASE_USER'),
         password: configService.get('DATABASE_PASSWORD'),
         database: configService.get('DATABASE_NAME'),
-        entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: false, // Usar migraciones en producción
+
+        // 🔥 ESTA ES LA CLAVE
+        autoLoadEntities: true,
+
+        synchronize: false,
         logging: configService.get('NODE_ENV') === 'development',
       }),
-      inject: [ConfigService],
     }),
 
+
     // Módulos de la aplicación
-    /* AuthModule,
+    AuthModule,
     UsersModule,
     RolesModule,
-    ProveedoresModule,
+    ReportModule,
+    SuppliersModule,
+    /* 
     ProductosModule,
-    ReportesModule,
     ConfigModuleApp, */
   ],
 })
-export class AppModule {}
+export class AppModule { }

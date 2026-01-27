@@ -128,7 +128,7 @@ INSERT INTO users (first_name, last_name, email, password) VALUES
     'Admin',
     'System',
     'admin@recigua.com',
-    '$2b$10$xQjKZ0QY3lWqJG3bD3gZLO1xVJXW5mX5yZYF6qJZ3mF5YJ6ZqJZ3m'
+    'admin123'
   )
 ON CONFLICT (email) DO NOTHING;
 
