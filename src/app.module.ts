@@ -7,12 +7,9 @@ import { RolesModule } from './modules/roles/roles.module';
 import { ReportModule } from './modules/report/report.module';
 import { SuppliersModule } from './modules/suppliers/suppliers.module';
 import { ProductModule } from './modules/products/product.module';
-
-
-
-/* 
 import { ConfigModuleApp } from './modules/config/config.module';
- */
+
+
 @Module({
   imports: [
     // Configuración de variables de entorno
@@ -49,8 +46,8 @@ import { ConfigModuleApp } from './modules/config/config.module';
     ReportModule,
     SuppliersModule,
     ProductModule,
-    /* 
-    ConfigModuleApp, */
+    ConfigModuleApp,
+    
   ],
 })
 export class AppModule { }

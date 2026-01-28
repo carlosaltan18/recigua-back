@@ -30,13 +30,13 @@ import { RolesGuard } from './guards/roles.guard';
         AuthService,
         LocalStrategy,
         JwtStrategy,
-        RolesGuard, // ✅ ACÁ
+        RolesGuard, // ✅ Guard local (no global)
     ],
     controllers: [AuthController],
     exports: [
         AuthService,
-        RolesGuard, // ✅ Y ACÁ
-        UsersModule, // Exportar UsersModule para que otros módulos puedan usar UsersService con RolesGuard
+        RolesGuard, // Exportar para usarlo en otros módulos
+        UsersModule,
     ],
 })
 export class AuthModule { }
