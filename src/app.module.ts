@@ -30,7 +30,6 @@ import { ConfigModuleApp } from './modules/config/config.module';
         password: configService.get('DATABASE_PASSWORD'),
         database: configService.get('DATABASE_NAME'),
 
-        // 🔥 ESTA ES LA CLAVE
         autoLoadEntities: true,
 
         synchronize: false,

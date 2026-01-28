@@ -49,7 +49,7 @@ export class ReportsController {
 
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles('admin')
+  @Roles('ROLE_ADMIN')
   remove(@Param('id') id: string) {
     return this.reportesService.remove(id);
   }

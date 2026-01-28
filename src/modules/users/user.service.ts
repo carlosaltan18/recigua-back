@@ -14,10 +14,14 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(Role)
     private rolesRepository: Repository<Role>,
-  ) {}
+  ) { }
 
+  /**
+   * Funcion para crear un nuevo usuario
+   * @param createUserDto 
+   * @returns nuevo usuario creado
+   */
   async create(createUserDto: CreateUserDto) {
-    // Verificar si el email ya existe
     const existingUser = await this.usersRepository.findOne({
       where: { email: createUserDto.email },
     });
@@ -29,10 +33,14 @@ export class UsersService {
     // Hashear la contraseña
     const hashedPassword = await bcrypt.hash(createUserDto.password, 10);
 
-    // Obtener los roles
-    const roles = await this.rolesRepository.findByIds(createUserDto.roleIds);
+    // Obtener los roles - si no se proporcionan, asignar ROLE_USER por defecto
+    let roles: Role[];
 
-    // Crear el usuario
+    const userRole = await this.rolesRepository.findOne({
+      where: { name: 'ROLE_USER' },
+    });
+    roles = userRole ? [userRole] : [];
+
     const user = this.usersRepository.create({
       ...createUserDto,
       password: hashedPassword,
@@ -44,9 +52,16 @@ export class UsersService {
     return result;
   }
 
+  /**
+   * Método para obtener todos los usuarios con paginación y búsqueda
+   * @param page 
+   * @param pageSize 
+   * @param search 
+   * @returns 
+   */
   async findAll(page = 1, pageSize = 10, search?: string) {
     const skip = (page - 1) * pageSize;
-    
+
     const queryBuilder = this.usersRepository
       .createQueryBuilder('user')
       .leftJoinAndSelect('user.roles', 'roles')
@@ -82,6 +97,12 @@ export class UsersService {
     };
   }
 
+  /**
+   * Método para obtener un usuario por ID
+   * @param id 
+   * @returns 
+   */
+
   async findOne(id: string) {
     const user = await this.usersRepository.findOne({
       where: { id },
@@ -96,6 +117,11 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * Método para encontrar un usuario por email
+   * @param email 
+   * @returns 
+   */
   async findByEmail(email: string) {
     return this.usersRepository.findOne({
       where: { email },
@@ -103,6 +129,12 @@ export class UsersService {
     });
   }
 
+  /**
+   * Método para actualizar un usuario
+   * @param id 
+   * @param updateUserDto 
+   * @returns 
+   */
   async update(id: string, updateUserDto: UpdateUserDto) {
     const user = await this.usersRepository.findOne({ where: { id } });
 
@@ -121,25 +153,23 @@ export class UsersService {
       }
     }
 
-    // Si se proporciona nueva contraseña, hashearla
     if (updateUserDto.password) {
       updateUserDto.password = await bcrypt.hash(updateUserDto.password, 10);
     }
 
-    // Si se proporcionan roleIds, actualizar los roles
-    if (updateUserDto.roleIds) {
-      const roles = await this.rolesRepository.findByIds(updateUserDto.roleIds);
-      user.roles = roles;
-    }
-
     // Actualizar los demás campos
     Object.assign(user, updateUserDto);
-    
+
     const updatedUser = await this.usersRepository.save(user);
     const { password, ...result } = updatedUser;
     return result;
   }
 
+  /**
+   * Método para eliminar un usuario
+   * @param id 
+   * @returns 
+   */
   async remove(id: string) {
     const user = await this.usersRepository.findOne({ where: { id } });
 

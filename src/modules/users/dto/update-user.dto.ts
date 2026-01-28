@@ -18,7 +18,4 @@ export class UpdateUserDto {
   @IsOptional()
   password?: string;
 
-  @IsArray()
-  @IsOptional()
-  roleIds?: string[];
 }
