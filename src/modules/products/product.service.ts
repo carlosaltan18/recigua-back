@@ -12,11 +12,22 @@ export class ProductService {
     private productRepository: Repository<Product>,
   ) {}
 
+  /**
+   * Create a new product
+   * @param createProductDto 
+   * @returns 
+   */
   async create(createProductDto: CreateProductDto) {
     const product = this.productRepository.create(createProductDto);
     return this.productRepository.save(product);
   }
-
+  /**
+   *  Find all products with pagination and optional search
+   * @param page 
+   * @param pageSize 
+   * @param search 
+   * @returns 
+   */
   async findAll(page = 1, pageSize = 10, search?: string) {
     const skip = (page - 1) * pageSize;
     const queryBuilder = this.productRepository.createQueryBuilder('product');

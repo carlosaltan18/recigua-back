@@ -5,18 +5,21 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Report, WeightUnit } from './entities/report.entity';
+import { Report, ReportState, WeightUnit } from './entities/report.entity';
 import { Product } from '../products/entities/product.entity';
 import { Supplier } from '../suppliers/entities/supplier.entity';
 import { SystemConfig } from '../config/entities/config.entity';
 import { CreateReportDto } from './dto/create-report.dto';
-import { UpdateReportDto } from './dto/update-report.dto';
+import { CreateReportItemDto } from './dto/create.item.report.dto';
+import { ReportItem } from './entities/report.product.entity';
 
 @Injectable()
 export class ReportsService {
     constructor(
         @InjectRepository(Report)
         private reportsRepository: Repository<Report>,
+        @InjectRepository(ReportItem)
+        private reportItemsRepository: Repository<ReportItem>,
         @InjectRepository(Product)
         private productsRepository: Repository<Product>,
         @InjectRepository(Supplier)
@@ -27,20 +30,35 @@ export class ReportsService {
 
 
     /* =========================
-       CONVERSIONES DE PESO
-    ========================= */
+     CONVERSIÓN A QUINTALES
+  ========================= */
 
     private convertToQuintals(weight: number, unit: WeightUnit): number {
-        const conversion: Record<WeightUnit, number> = {
+        const map = {
             [WeightUnit.QUINTALS]: 1,
-            [WeightUnit.POUNDS]: 0.01,        // 100 lb = 1 quintal
-            [WeightUnit.KILOGRAMS]: 0.02174,  // 46 kg = 1 quintal
-            [WeightUnit.TONS]: 21.74,         // 1 ton = 21.74 quintales
+            [WeightUnit.POUNDS]: 0.01,
+            [WeightUnit.KILOGRAMS]: 0.02174,
+            [WeightUnit.TONS]: 21.74,
         };
 
-        return Number((weight * conversion[unit]).toFixed(4));
+        return Number((weight * map[unit]).toFixed(4));
     }
+    /* =========================
+         TICKET CORRELATIVO
+      ========================= */
 
+    private async generateTicket(): Promise<string> {
+        const last = await this.reportsRepository.find({
+            order: { createdAt: 'DESC' },
+            take: 1,
+        });
+
+        const lastNumber = last.length
+            ? Number(last[0].ticketNumber)
+            : 0;
+
+        return String(lastNumber + 1).padStart(6, '0');
+    }
     /* =========================
        CALCULO DE PRECIOS
     ========================= */
@@ -68,52 +86,48 @@ export class ReportsService {
     ========================= */
 
     async create(dto: CreateReportDto, userId: string) {
-        // ticket único
-        const exists = await this.reportsRepository.findOne({
-            where: { ticketNumber: dto.ticketNumber },
-        });
-
-        if (exists) {
-            throw new ConflictException('El número de ticket ya existe');
-        }
-
-        const product = await this.productsRepository.findOne({
-            where: { id: dto.productId },
-        });
-        if (!product) throw new NotFoundException('Producto no encontrado');
-
         const supplier = await this.suppliersRepository.findOne({
             where: { id: dto.supplierId },
         });
         if (!supplier) throw new NotFoundException('Proveedor no encontrado');
 
-        // 🔥 ACÁ está la diferencia importante
-        const config = await this.configRepository.findOne({ where: {} });
-        const extraPercentage = config?.extraPercentage ?? 5;
+        const ticketNumber = await this.generateTicket();
 
-        const weightInQuintals = this.convertToQuintals(
-            dto.weight,
-            dto.weightUnit,
-        );
+        let netWeight = dto.grossWeight - dto.tareWeight;
+        if (netWeight <= 0) {
+            throw new ConflictException('Peso neto inválido');
+        }
 
-        const { basePrice, extraPrice, totalPrice } = this.calculatePrices(
-            Number(product.pricePerQuintal),
-            weightInQuintals,
-            extraPercentage,
-        );
+        // Aplicar extraPercentage del DTO si viene
+        if (dto.extraPercentage && dto.extraPercentage > 0) {
+            netWeight -= netWeight * (dto.extraPercentage / 100);
+        }
+
+
+        netWeight -= netWeight * 0.05;
+
+
 
         const report = this.reportsRepository.create({
-            ...dto,
+            reportDate: dto.reportDate,
+            plateNumber: dto.plateNumber,
+            ticketNumber,
+            supplier,
             userId,
-            weightInQuintals,
-            extraPercentage,
-            basePrice,
-            extraPrice,
-            totalPrice,
+            grossWeight: dto.grossWeight,
+            tareWeight: dto.tareWeight,
+            netWeight: Number(netWeight.toFixed(2)),
+            extraPercentage: dto.extraPercentage || 0,
+            basePrice: 0,
+            totalPrice: 0,
+            driverName: dto.driverName,
+            state: ReportState.PENDING,
+            items: [],
         });
 
         return this.reportsRepository.save(report);
     }
+
 
 
     /* =========================
@@ -134,8 +148,9 @@ export class ReportsService {
         const qb = this.reportsRepository
             .createQueryBuilder('report')
             .leftJoinAndSelect('report.supplier', 'supplier')
-            .leftJoinAndSelect('report.product', 'product')
             .leftJoinAndSelect('report.user', 'user')
+            .leftJoinAndSelect('report.items', 'items')
+            .leftJoinAndSelect('items.product', 'itemProduct')
             .orderBy('report.reportDate', 'DESC')
 
         if (startDate && endDate) {
@@ -150,16 +165,14 @@ export class ReportsService {
         }
 
         if (productId) {
-            qb.andWhere('report.productId = :productId', { productId });
+            qb.andWhere('itemProduct.id = :productId', { productId });
         }
 
         if (search) {
             qb.andWhere(
-                `
-        report.plateNumber ILIKE :search
+                `(report.plateNumber ILIKE :search
     OR report.ticketNumber ILIKE :search
-    OR report.driverName ILIKE :search
-        `,
+    OR report.driverName ILIKE :search)`,
                 { search: `%${search}%` },
             );
         }
@@ -185,7 +198,7 @@ export class ReportsService {
     async findOne(id: string) {
         const report = await this.reportsRepository.findOne({
             where: { id },
-            relations: ['supplier', 'product', 'user'],
+            relations: ['supplier', 'user', 'items', 'items.product'], 
         });
 
         if (!report) {
@@ -195,77 +208,109 @@ export class ReportsService {
         return report;
     }
 
-    /* =========================
-       UPDATE
-    ========================= */
+    async addItem(reportId: string, dto: CreateReportItemDto) {
+        const report = await this.findOne(reportId);
 
-    async update(id: string, dto: UpdateReportDto) {
-        const report = await this.findOne(id);
-
-        // Verificar ticket único
-        if (dto.ticketNumber && dto.ticketNumber !== report.ticketNumber) {
-            const exists = await this.reportsRepository.findOne({
-                where: { ticketNumber: dto.ticketNumber },
-            });
-
-            if (exists) {
-                throw new ConflictException('El número de ticket ya existe');
-            }
+        if (report.state !== ReportState.PENDING) {
+            throw new ConflictException('El reporte no se puede modificar');
         }
 
-        const mustRecalculate =
-            dto.weight !== undefined ||
-            dto.weightUnit !== undefined ||
-            dto.productId !== undefined;
+        const product = await this.productsRepository.findOne({
+            where: { id: dto.productId },
+        });
+        if (!product) throw new NotFoundException('Producto no encontrado');
 
-        if (mustRecalculate) {
-            const productId = dto.productId ?? report.productId;
+        let effectiveWeight = dto.weight;
 
-            const product = await this.productsRepository.findOne({
-                where: { id: productId },
-            });
+        // Aplicar extraPercentage del reporte si existe
+        if (report.extraPercentage && report.extraPercentage > 0) {
+            effectiveWeight -= effectiveWeight * (report.extraPercentage / 100);
+        }
 
-            if (!product) {
-                throw new NotFoundException('Producto no encontrado');
-            }
+        // Siempre restar el 5% adicional
+        effectiveWeight -= effectiveWeight * 0.05;
 
-            // 🔥 SIEMPRE leer el porcentaje desde Config
-            const config = await this.configRepository.findOne({ where: {} });
-            const extraPercentage = config?.extraPercentage ?? report.extraPercentage;
+        if (dto.discountWeight) {
+            effectiveWeight -= dto.discountWeight;
+        }
 
-            const weight = dto.weight ?? report.weight;
-            const unit = dto.weightUnit ?? report.weightUnit;
+        if (effectiveWeight <= 0) {
+            throw new ConflictException('Peso efectivo inválido');
+        }
 
-            const weightInQuintals = this.convertToQuintals(weight, unit);
+        const usedWeight = report.items.reduce(
+            (sum, i) => sum + i.weight,
+            0,
+        );
 
-            const { basePrice, extraPrice, totalPrice } = this.calculatePrices(
-                Number(product.pricePerQuintal),
+        if (usedWeight + effectiveWeight > report.netWeight) {
+            throw new ConflictException('Se excede el peso neto disponible');
+        }
+
+        const weightInQuintals = this.convertToQuintals(
+            effectiveWeight,
+            dto.weightUnit,
+        );
+
+        const basePrice = Number(
+            (weightInQuintals * Number(product.pricePerQuintal)).toFixed(2),
+        );
+
+        report.items.push(
+            this.reportItemsRepository.create({
+                product,
+                weight: effectiveWeight,
+                weightUnit: dto.weightUnit,
                 weightInQuintals,
-                extraPercentage,
-            );
-
-            Object.assign(report, dto, {
-                weightInQuintals,
-                extraPercentage,
+                pricePerQuintal: product.pricePerQuintal,
                 basePrice,
-                extraPrice,
-                totalPrice,
-            });
-        } else {
-            Object.assign(report, dto);
-        }
+            }),
+        );
 
         return this.reportsRepository.save(report);
     }
 
-
-    /* =========================
-       REMOVE
-    ========================= */
-
-    async remove(id: string) {
+    async finish(id: string) {
         const report = await this.findOne(id);
-        await this.reportsRepository.remove(report);
-        return { success: true };
+
+        if (report.state !== ReportState.PENDING) {
+            throw new ConflictException('El reporte no se puede finalizar');
+        }
+
+        const basePrice = report.items.reduce(
+            (sum, i) => sum + i.basePrice,
+            0,
+        );
+
+        report.basePrice = basePrice;
+        report.totalPrice = basePrice;
+        report.state = ReportState.APPROVED;
+
+        return this.reportsRepository.save(report);
     }
+
+    async cancel(id: string) {
+        const report = await this.findOne(id);
+
+        if (report.state === ReportState.CANCELLED) {
+            throw new ConflictException('El reporte ya está cancelado');
+        }
+
+        report.state = ReportState.CANCELLED;
+        return this.reportsRepository.save(report);
+    }
+
+    /**
+     * Método para obtener el porcentaje configurado del sistema
+     * @returns Porcentaje de configuración del sistema
+     */
+    private async getConfigPercentage(): Promise<number> {
+        const config = await this.configRepository.findOne({
+            order: { updatedAt: 'DESC' },
+        });
+
+        return config?.extraPercentage || 0;
+    }
+
+
 }

@@ -66,25 +66,55 @@ CREATE TABLE IF NOT EXISTS products (
 -- =========================================
 -- Reports table
 -- =========================================
+
+CREATE TYPE report_state AS ENUM (
+  'PENDING',
+  'APPROVED',
+  'CANCELLED'
+);
+
+CREATE TYPE weight_unit_enum AS ENUM (
+  'quintals',
+  'pounds',
+  'kilograms',
+  'tons'
+);
+
 CREATE TABLE IF NOT EXISTS reports (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   report_date DATE NOT NULL,
   plate_number VARCHAR(20) NOT NULL,
   ticket_number VARCHAR(50) NOT NULL UNIQUE,
   supplier_id UUID NOT NULL REFERENCES suppliers(id),
-  product_id UUID NOT NULL REFERENCES products(id),
-  weight DECIMAL(10,2) NOT NULL,
-  weight_unit VARCHAR(20) NOT NULL,
-  weight_in_quintals DECIMAL(10,4) NOT NULL,
+  user_id UUID NOT NULL REFERENCES users(id),
+  gross_weight DECIMAL(10,2) NOT NULL,   -- peso bruto
+  tare_weight DECIMAL(10,2) NOT NULL,    -- peso tara
+  net_weight DECIMAL(10,2) NOT NULL,     -- calculado: bruto - tara
   extra_percentage DECIMAL(5,2) NOT NULL,
   base_price DECIMAL(12,2) NOT NULL,
-  extra_price DECIMAL(12,2) NOT NULL,
   total_price DECIMAL(12,2) NOT NULL,
   driver_name VARCHAR(200) NOT NULL,
-  user_id UUID NOT NULL REFERENCES users(id),
+  state report_state NOT NULL DEFAULT 'PENDING',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS report_items (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+
+  report_id UUID NOT NULL REFERENCES reports(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id),
+
+  weight DECIMAL(10,2) NOT NULL,
+  weight_unit weight_unit_enum NOT NULL,
+  weight_in_quintals DECIMAL(10,4) NOT NULL,
+
+  price_per_quintal DECIMAL(10,2) NOT NULL,
+  base_price DECIMAL(12,2) NOT NULL,
+
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 
 -- =========================================
 -- System configuration table
@@ -100,7 +130,6 @@ CREATE TABLE IF NOT EXISTS system_config (
 -- =========================================
 CREATE INDEX IF NOT EXISTS idx_reports_date ON reports(report_date);
 CREATE INDEX IF NOT EXISTS idx_reports_supplier ON reports(supplier_id);
-CREATE INDEX IF NOT EXISTS idx_reports_product ON reports(product_id);
 CREATE INDEX IF NOT EXISTS idx_reports_user ON reports(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 

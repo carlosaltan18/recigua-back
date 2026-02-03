@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Report } from './entities/report.entity';
+import { ReportItem } from './entities/report.product.entity';
 import { Product } from '../products/entities/product.entity';
 import { SystemConfig } from '../config/entities/config.entity';
 import { ReportsService } from './report.service';
@@ -10,7 +11,7 @@ import { AuthModule } from '../auth/auth.module';
 
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Report, Product, SystemConfig, Supplier]), AuthModule],
+  imports: [TypeOrmModule.forFeature([Report, ReportItem, Product, SystemConfig, Supplier]), AuthModule],
   controllers: [ReportsController],
   providers: [ReportsService],
   exports: [ReportsService],

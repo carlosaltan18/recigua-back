@@ -17,7 +17,7 @@ export class Product {
   })
   pricePerQuintal: number;
 
-  @OneToMany(() => Report, (report) => report.product)
+  @OneToMany(() => Report, (report) => report.items)
   reports: Report[];
 
   @CreateDateColumn({ name: 'created_at' })

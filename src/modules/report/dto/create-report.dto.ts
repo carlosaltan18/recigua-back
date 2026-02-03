@@ -1,35 +1,43 @@
-import { IsNotEmpty, IsString, IsNumber, IsEnum, IsDateString, IsUUID, Min } from 'class-validator';
-import { WeightUnit } from '../entities/report.entity';
+import {
+  IsString,
+  IsUUID,
+  IsNumber,
+  Min,
+  ValidateNested,
+  ArrayMinSize,
+  Matches,
+} from 'class-validator';
+import { Type } from 'class-transformer';
+import { CreateReportItemDto } from './create.item.report.dto';
 
 export class CreateReportDto {
-  @IsDateString()
-  @IsNotEmpty()
-  reportDate: Date;
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'reportDate debe estar en formato YYYY-MM-DD' })
+  reportDate: string;
 
   @IsString()
-  @IsNotEmpty()
   plateNumber: string;
 
-  @IsString()
-  @IsNotEmpty()
-  ticketNumber: string;
-
   @IsUUID()
-  @IsNotEmpty()
   supplierId: string;
-
-  @IsUUID()
-  @IsNotEmpty()
-  productId: string;
 
   @IsNumber()
   @Min(0.01)
-  weight: number;
+  grossWeight: number;
 
-  @IsEnum(WeightUnit)
-  weightUnit: WeightUnit;
+  @IsNumber()
+  @Min(0.01)
+  tareWeight: number;
 
   @IsString()
-  @IsNotEmpty()
   driverName: string;
+
+  @IsNumber()
+  @Min(0)
+  extraPercentage: number;
+
+  @ValidateNested({ each: true })
+  @Type(() => CreateReportItemDto)
+  @ArrayMinSize(1)
+  items: CreateReportItemDto[];
 }

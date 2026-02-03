@@ -180,4 +180,79 @@ export class UsersService {
     await this.usersRepository.remove(user);
     return { success: true };
   }
+
+  /**
+   * Método para cambiar el rol de un usuario
+   * @param id - ID del usuario
+   * @param roleNames - Array de nombres de los roles a asignar (ej: ['ROLE_ADMIN', 'ROLE_USER'])
+   * @returns Usuario con los nuevos roles asignados
+   */
+  async changeRole(id: string, roleNames: string[]) {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // Obtener los roles por sus nombres
+    const roles = await this.rolesRepository.find({
+      where: roleNames.map(name => ({ name })),
+    });
+
+    if (roles.length !== roleNames.length) {
+      throw new NotFoundException('Uno o más roles no fueron encontrados');
+    }
+
+    // Asignar los nuevos roles
+    user.roles = roles;
+
+    const updatedUser = await this.usersRepository.save(user);
+    
+    return this.findOne(updatedUser.id);
+  }
+
+  /**
+   * Método para remover roles de un usuario
+   * @param id - ID del usuario
+   * @param roleNames - Array de nombres de los roles a remover (ej: ['ROLE_ADMIN'])
+   * @returns Usuario con los roles removidos
+   */
+  async removeRole(id: string, roleNames: string[]) {
+    const user = await this.usersRepository.findOne({
+      where: { id },
+      relations: ['roles'],
+    });
+
+    if (!user) {
+      throw new NotFoundException('Usuario no encontrado');
+    }
+
+    // Obtener los roles a remover
+    const rolesToRemove = await this.rolesRepository.find({
+      where: roleNames.map(name => ({ name })),
+    });
+
+    if (rolesToRemove.length !== roleNames.length) {
+      throw new NotFoundException('Uno o más roles no fueron encontrados');
+    }
+
+    // Remover los roles (filtrar los que no están en la lista)
+    user.roles = user.roles.filter(
+      role => !rolesToRemove.some(removeRole => removeRole.id === role.id)
+    );
+
+    // Validar que al menos tenga un rol
+    if (user.roles.length === 0) {
+      throw new ConflictException('El usuario debe tener al menos un rol');
+    }
+
+    const updatedUser = await this.usersRepository.save(user);
+    
+    return this.findOne(updatedUser.id);
+  }
+
+  
 }

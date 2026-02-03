@@ -48,7 +48,7 @@ services:
       DATABASE_PASSWORD: recigua_password
       DATABASE_NAME: recigua_db
       JWT_SECRET: your-super-secret-jwt-key-change-in-production
-      JWT_EXPIRES_IN: 7d
+      JWT_EXPIRES_IN: 604800
     volumes:
       - .:/app
       - /app/node_modules

@@ -5,6 +5,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ChangeRoleDto } from './dto/change-role.dto';
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -52,4 +53,19 @@ export class UsersController {
     remove(@Param('id') id: string) {
         return this.usersService.remove(id);
     }
+
+    @Put(':id/roles')
+    @UseGuards(RolesGuard)
+    @Roles('ROLE_ADMIN')
+    changeRole(@Param('id') id: string, @Body() changeRoleDto: ChangeRoleDto) {
+        return this.usersService.changeRole(id, changeRoleDto.roleNames);
+    }
+
+    @Delete(':id/roles')
+    @UseGuards(RolesGuard)
+    @Roles('ROLE_ADMIN')
+    removeRole(@Param('id') id: string, @Body() changeRoleDto: ChangeRoleDto) {
+        return this.usersService.removeRole(id, changeRoleDto.roleNames);
+    }
+    
 }
