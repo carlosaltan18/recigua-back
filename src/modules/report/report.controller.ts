@@ -80,8 +80,8 @@ export class ReportsController {
    * Finalizar un reporte (cambiar estado y calcular totales)
    */
   @Patch(':id/finish')
-  finish(@Param('id') id: string) {
-    return this.reportsService.finish(id);
+  finish(@Param('id') id: string, @Body('tareWeight') tareWeight: number) {
+    return this.reportsService.finish(id, tareWeight);
   }
 
   /**
@@ -98,10 +98,7 @@ export class ReportsController {
      * Generar PDF del ticket de un reporte
      */
   @Get(':id/pdf')
-  async generatePdfTicket(
-    @Param('id') id: string,
-    @Res() res: Response,
-  ) {
+  async generatePdfTicket(@Param('id') id: string,  @Res() res: Response) {
     const pdfBuffer = await this.reportsService.generatePdfTicket(id);
 
     res.set({

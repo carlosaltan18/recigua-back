@@ -6,6 +6,7 @@ import {
   ValidateNested,
   ArrayMinSize,
   Matches,
+  IsOptional,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CreateReportItemDto } from './create.item.report.dto';
@@ -25,6 +26,7 @@ export class CreateReportDto {
   @Min(0.01)
   grossWeight: number;
 
+  @IsOptional()
   @IsNumber()
   @Min(0.01)
   tareWeight: number;
@@ -32,12 +34,8 @@ export class CreateReportDto {
   @IsString()
   driverName: string;
 
-  @IsNumber()
-  @Min(0)
-  extraPercentage: number;
-
   @ValidateNested({ each: true })
   @Type(() => CreateReportItemDto)
-  @ArrayMinSize(1)
+  //@ArrayMinSize(1)
   items: CreateReportItemDto[];
 }

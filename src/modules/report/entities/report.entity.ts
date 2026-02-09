@@ -95,14 +95,6 @@ export class Report {
 
   @Column({
     type: 'decimal',
-    precision: 5,
-    scale: 2,
-    name: 'extra_percentage',
-  })
-  extraPercentage: number;
-
-  @Column({
-    type: 'decimal',
     precision: 12,
     scale: 2,
     name: 'base_price',

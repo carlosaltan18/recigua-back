@@ -90,7 +90,6 @@ CREATE TABLE IF NOT EXISTS reports (
   gross_weight DECIMAL(10,2) NOT NULL,   -- peso bruto
   tare_weight DECIMAL(10,2) NOT NULL,    -- peso tara
   net_weight DECIMAL(10,2) NOT NULL,     -- calculado: bruto - tara
-  extra_percentage DECIMAL(5,2) NOT NULL,
   base_price DECIMAL(12,2) NOT NULL,
   total_price DECIMAL(12,2) NOT NULL,
   driver_name VARCHAR(200) NOT NULL,

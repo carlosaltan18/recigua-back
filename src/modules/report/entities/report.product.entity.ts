@@ -78,6 +78,13 @@ export class ReportItem {
   })
   basePrice: number;
 
+ /*  @Column({
+    type: 'decimal',
+    precision: 12,
+    scale: 2,
+    name: 'discount_weight',
+  })
+  discountWeight: number; */
   /* =====================
      AUDITORÍA
   ===================== */

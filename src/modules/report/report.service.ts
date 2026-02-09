@@ -33,16 +33,40 @@ export class ReportsService {
      CONVERSIÓN A QUINTALES
   ========================= */
 
-    private convertToQuintals(weight: number, unit: WeightUnit): number {
-        const map = {
-            [WeightUnit.QUINTALS]: 1,
-            [WeightUnit.POUNDS]: 0.01,
-            [WeightUnit.KILOGRAMS]: 0.02174,
-            [WeightUnit.TONS]: 21.74,
-        };
+   private convertToQuintals(weight: number, unit: WeightUnit): number {
+    let kilograms: number;
 
-        return Number((weight * map[unit]).toFixed(4));
+    switch (unit) {
+        case WeightUnit.QUINTALS:
+            // quintal métrico → kg
+            kilograms = weight * 100;
+            break;
+
+        case WeightUnit.KILOGRAMS:
+            kilograms = weight;
+            break;
+
+        case WeightUnit.POUNDS:
+            kilograms = weight / 2.20462262;
+            break;
+
+        case WeightUnit.TONS:
+            // tonelada métrica
+            kilograms = weight * 1000;
+            break;
+
+        default:
+            throw new Error(`Unidad no soportada: ${unit}`);
     }
+
+    // kg → quintales métricos
+    const quintals = kilograms / 100;
+    return Number(quintals.toFixed(4));
+}
+
+
+
+
     /* =========================
          TICKET CORRELATIVO
       ========================= */
@@ -89,24 +113,15 @@ export class ReportsService {
         const supplier = await this.suppliersRepository.findOne({
             where: { id: dto.supplierId },
         });
-        if (!supplier) throw new NotFoundException('Proveedor no encontrado');
+        if (!supplier) {
+            throw new NotFoundException('Proveedor no encontrado');
+        }
+
+        if (dto.grossWeight <= 0) {
+            throw new ConflictException('Peso bruto inválido');
+        }
 
         const ticketNumber = await this.generateTicket();
-
-        let netWeight = dto.grossWeight - dto.tareWeight;
-        if (netWeight <= 0) {
-            throw new ConflictException('Peso neto inválido');
-        }
-
-        // Aplicar extraPercentage del DTO si viene
-        if (dto.extraPercentage && dto.extraPercentage > 0) {
-            netWeight -= netWeight * (dto.extraPercentage / 100);
-        }
-
-
-        netWeight -= netWeight * 0.05;
-
-
 
         const report = this.reportsRepository.create({
             reportDate: dto.reportDate,
@@ -114,10 +129,11 @@ export class ReportsService {
             ticketNumber,
             supplier,
             userId,
+            // SOLO se guarda el bruto
             grossWeight: dto.grossWeight,
-            tareWeight: dto.tareWeight,
-            netWeight: Number(netWeight.toFixed(2)),
-            extraPercentage: dto.extraPercentage || 0,
+            // Aún no calculados
+            tareWeight: 0,
+            netWeight: 0,
             basePrice: 0,
             totalPrice: 0,
             driverName: dto.driverName,
@@ -127,6 +143,7 @@ export class ReportsService {
 
         return this.reportsRepository.save(report);
     }
+
 
 
 
@@ -208,6 +225,10 @@ export class ReportsService {
         return report;
     }
 
+    /* =========================
+       ADD ITEM
+    ========================= */
+
     async addItem(reportId: string, dto: CreateReportItemDto) {
         const report = await this.findOne(reportId);
 
@@ -220,48 +241,49 @@ export class ReportsService {
         });
         if (!product) throw new NotFoundException('Producto no encontrado');
 
-        let effectiveWeight = dto.weight;
+        // 1. Convertir el peso de entrada a Quintales inmediatamente
+        // Esto asegura que la comparación contra el peso bruto sea precisa
+        const weightInQuintalsRaw = this.convertToQuintals(dto.weight, dto.weightUnit);
 
-        // Aplicar extraPercentage del reporte si existe
-        if (report.extraPercentage && report.extraPercentage > 0) {
-            effectiveWeight -= effectiveWeight * (report.extraPercentage / 100);
+        // 2. Aplicar deducciones sobre el peso en quintales
+        let effectiveWeightInQuintals = weightInQuintalsRaw;
+
+        // Restar el 5% fijo de humedad/impurezas
+        effectiveWeightInQuintals -= effectiveWeightInQuintals * 0.05;
+
+        // Aplicar descuento porcentual adicional si existe
+        if (dto.discountWeight && dto.discountWeight > 0) {
+            effectiveWeightInQuintals -= effectiveWeightInQuintals * (dto.discountWeight / 100);
         }
 
-        // Siempre restar el 5% adicional
-        effectiveWeight -= effectiveWeight * 0.05;
-
-        if (dto.discountWeight) {
-            effectiveWeight -= dto.discountWeight;
+        if (effectiveWeightInQuintals <= 0) {
+            throw new ConflictException('Peso efectivo inválido tras descuentos');
         }
 
-        if (effectiveWeight <= 0) {
-            throw new ConflictException('Peso efectivo inválido');
-        }
-
-        const usedWeight = report.items.reduce(
-            (sum, i) => sum + i.weight,
+        // 3. Validar contra el Peso Bruto del reporte (asumiendo que grossWeight está en quintales)
+        const currentUsedWeight = report.items.reduce(
+            (sum, i) => sum + i.weightInQuintals,
             0,
         );
 
-        if (usedWeight + effectiveWeight > report.netWeight) {
-            throw new ConflictException('Se excede el peso neto disponible');
+        if (currentUsedWeight + effectiveWeightInQuintals > report.grossWeight) {
+            console.log('Peso bruto:', report.grossWeight);
+            console.log('Peso actual usado:', currentUsedWeight);
+            console.log('Peso a agregar (en quintales):', effectiveWeightInQuintals);
+            throw new ConflictException('Se excede el peso bruto disponible en el camión');
         }
 
-        const weightInQuintals = this.convertToQuintals(
-            effectiveWeight,
-            dto.weightUnit,
-        );
-
+        // 4. Calcular precio final
         const basePrice = Number(
-            (weightInQuintals * Number(product.pricePerQuintal)).toFixed(2),
+            (effectiveWeightInQuintals * Number(product.pricePerQuintal)).toFixed(2),
         );
 
         report.items.push(
             this.reportItemsRepository.create({
                 product,
-                weight: effectiveWeight,
-                weightUnit: dto.weightUnit,
-                weightInQuintals,
+                weight: Number(effectiveWeightInQuintals.toFixed(2)),
+                weightUnit: WeightUnit.QUINTALS,
+                weightInQuintals: effectiveWeightInQuintals,
                 pricePerQuintal: product.pricePerQuintal,
                 basePrice,
             }),
@@ -270,24 +292,67 @@ export class ReportsService {
         return this.reportsRepository.save(report);
     }
 
-    async finish(id: string) {
+    async finish(id: string, tareWeight: number) {
         const report = await this.findOne(id);
 
         if (report.state !== ReportState.PENDING) {
             throw new ConflictException('El reporte no se puede finalizar');
         }
 
-        const basePrice = report.items.reduce(
-            (sum, i) => sum + i.basePrice,
+        if (!tareWeight || tareWeight <= 0) {
+            throw new ConflictException('La tara es obligatoria y debe ser mayor a 0');
+        }
+
+        if (tareWeight >= report.grossWeight) {
+            throw new ConflictException(
+                'La tara no puede ser mayor o igual al peso bruto',
+            );
+        }
+
+        let netWeight = report.grossWeight - tareWeight;
+
+        // 4️⃣ Validar que los items cuadren con el neto BASE
+        const totalItemsWeight = report.items.reduce(
+            (sum, item) => sum + Number(item.weight),
             0,
         );
 
-        report.basePrice = basePrice;
-        report.totalPrice = basePrice;
+        if (Number(totalItemsWeight.toFixed(2)) > Number(netWeight.toFixed(2))) {
+            throw new ConflictException(
+                `La suma de los productos (${totalItemsWeight.toFixed(
+                    2,
+                )}) es superior al peso neto (${netWeight.toFixed(2)})`,
+            );
+        }
+
+        netWeight = Number(netWeight.toFixed(2));
+
+        // Recalcular precios por item
+        let basePrice = 0;
+
+        for (const item of report.items) {
+            const weightInQuintals = this.convertToQuintals(
+                item.weight,
+                item.weightUnit,
+            );
+
+            item.weightInQuintals = weightInQuintals;
+
+            item.basePrice = Number(
+                (weightInQuintals * Number(item.pricePerQuintal)).toFixed(2),
+            );
+
+            basePrice += item.basePrice;
+        }
+        report.tareWeight = tareWeight;
+        report.netWeight = netWeight;
+        report.basePrice = Number(basePrice.toFixed(2));
+        report.totalPrice = report.basePrice;
         report.state = ReportState.APPROVED;
 
         return this.reportsRepository.save(report);
     }
+
 
     async cancel(id: string) {
         const report = await this.findOne(id);
@@ -320,10 +385,9 @@ export class ReportsService {
 
     async generatePdfTicket(id: string): Promise<Buffer> {
         const report = await this.findOne(id);
-
-        // Crear un servidor temporal Express para generar el PDF
         const puppeteer = require('puppeteer');
 
+        // Generamos el HTML combinando un ticket por cada item
         const html = this.generateTicketHtml(report);
 
         const browser = await puppeteer.launch({
@@ -338,326 +402,135 @@ export class ReportsService {
             format: 'Letter',
             printBackground: true,
             margin: {
-                top: '20px',
+                top: '10px',
                 right: '20px',
-                bottom: '20px',
+                bottom: '10px',
                 left: '20px'
             }
         });
 
         await browser.close();
-
         return pdfBuffer;
     }
 
     private generateTicketHtml(report: Report): string {
         const formatDate = (date: Date) => {
             return new Date(date).toLocaleDateString('es-GT', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
+                year: 'numeric', month: 'long', day: 'numeric'
             });
         };
 
         const formatCurrency = (amount: number | string) => {
             return new Intl.NumberFormat('es-GT', {
-                style: 'currency',
-                currency: 'GTQ'
+                style: 'currency', currency: 'GTQ'
             }).format(Number(amount));
         };
 
-        const formatWeight = (weight: number | string) => {
-            return Number(weight).toFixed(2);
-        };
+        const formatWeight = (weight: number | string) => Number(weight).toFixed(2);
 
-        const itemsHtml = report.items.map(item => `
-            <tr>
-                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb;">${item.product.name}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${formatWeight(item.weight)} ${item.weightUnit}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: center;">${Number(item.weightInQuintals).toFixed(4)} qq</td>
-                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right;">${formatCurrency(item.pricePerQuintal)}</td>
-                <td style="padding: 12px; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600;">${formatCurrency(item.basePrice)}</td>
-            </tr>
-        `).join('');
+        // Generamos un bloque HTML por cada producto
+        const ticketsHtml = report.items.map((item, index) => {
+            const isLast = index === report.items.length - 1;
 
-        return `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8" />
-    <title>Ticket de Pesaje</title>
-    <style>
-        @page {
-            margin: 12mm;
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            font-size: 13px;
-            color: #111827;
-            background: #ffffff;
-        }
-
-        .ticket {
-            max-width: 900px;
-            margin: auto;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-
-        /* ================= HEADER ================= */
-        .header {
-            background: #1f2937;
-            color: #ffffff;
-            padding: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .company {
-            font-size: 22px;
-            font-weight: bold;
-            letter-spacing: 1px;
-        }
-
-        .ticket-meta {
-            text-align: right;
-            font-size: 12px;
-        }
-
-        .ticket-meta strong {
-            display: block;
-            font-size: 18px;
-        }
-
-        /* ================= CONTENT ================= */
-        .content {
-            padding: 24px;
-        }
-
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 999px;
-            font-size: 11px;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-
-        .pending { background: #fef3c7; color: #92400e; }
-        .approved { background: #d1fae5; color: #065f46; }
-        .cancelled { background: #fee2e2; color: #991b1b; }
-
-        /* ================= INFO GRID ================= */
-        .info-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .info-box {
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            padding: 10px 12px;
-        }
-
-        .info-label {
-            font-size: 11px;
-            color: #6b7280;
-            margin-bottom: 4px;
-        }
-
-        .info-value {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        /* ================= WEIGHTS ================= */
-        .weights {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 24px;
-        }
-
-        .weight-box {
-            border: 2px solid #1f2937;
-            border-radius: 6px;
-            padding: 12px;
-            text-align: center;
-        }
-
-        .weight-box span {
-            display: block;
-            font-size: 11px;
-            color: #6b7280;
-        }
-
-        .weight-box strong {
-            font-size: 20px;
-        }
-
-        /* ================= TABLE ================= */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 24px;
-        }
-
-        thead th {
-            background: #f3f4f6;
-            border-bottom: 2px solid #1f2937;
-            padding: 8px;
-            text-align: left;
-            font-size: 12px;
-        }
-
-        tbody td {
-            padding: 8px;
-            border-bottom: 1px solid #e5e7eb;
-        }
-
-        .right { text-align: right; }
-        .center { text-align: center; }
-
-        /* ================= TOTALS ================= */
-        .totals {
-            max-width: 350px;
-            margin-left: auto;
-            border: 1px solid #e5e7eb;
-            border-radius: 6px;
-            padding: 16px;
-        }
-
-        .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-
-        .grand-total {
-            border-top: 2px solid #1f2937;
-            padding-top: 10px;
-            margin-top: 10px;
-            font-size: 18px;
-            font-weight: bold;
-        }
-
-        /* ================= FOOTER ================= */
-        .footer {
-            text-align: center;
-            font-size: 11px;
-            color: #6b7280;
-            padding: 16px;
-            border-top: 1px dashed #e5e7eb;
-        }
-    </style>
-</head>
-<body>
-
-<div class="ticket">
-    <div class="header">
-        <div class="company">RECIGUA</div>
-        <div class="ticket-meta">
-            Ticket #
-            <strong>${report.ticketNumber}</strong>
-            ${formatDate(report.reportDate)}
-        </div>
-    </div>
-
-    <div class="content">
-
-        <div class="info-grid">
-            <div class="info-box">
-                <div class="info-label">Estado</div>
-                <div class="info-value">
-                    <span class="badge ${report.state.toLowerCase()}">
-                        ${report.state === ReportState.PENDING ? 'Pendiente' :
-                report.state === ReportState.APPROVED ? 'Aprobado' : 'Cancelado'}
-                    </span>
+            return `
+        <div class="ticket" style="${!isLast ? 'page-break-after: always;' : ''}">
+            <div class="header">
+                <div class="company">RECIGUA</div>
+                <div class="ticket-meta">
+                    Ticket # <strong>${report.ticketNumber}</strong>
+                    Item: ${index + 1} de ${report.items.length}<br>
+                    ${formatDate(report.reportDate)}
                 </div>
             </div>
 
-            <div class="info-box">
-                <div class="info-label">Proveedor</div>
-                <div class="info-value">${report.supplier.name}</div>
+            <div class="content">
+                <div class="info-grid">
+                    <div class="info-box">
+                        <div class="info-label">Estado</div>
+                        <div class="info-value">
+                            <span class="badge ${report.state.toLowerCase()}">
+                                ${report.state}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Proveedor</div>
+                        <div class="info-value">${report.supplier.name}</div>
+                    </div>
+                    <div class="info-box">
+                        <div class="info-label">Placa / Conductor</div>
+                        <div class="info-value">${report.plateNumber} / ${report.driverName}</div>
+                    </div>
+                </div>
+
+                <h3 style="border-bottom: 2px solid #1f2937; padding-bottom: 5px;">Detalle del Producto</h3>
+                
+                <div class="product-detail">
+                    <table style="width: 100%; font-size: 16px;">
+                        <thead>
+                            <tr>
+                                <th>Descripción</th>
+                                <th class="center">Peso Neto Item</th>
+                                <th class="center">Quintales</th>
+                                <th class="right">Precio/qq</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="font-size: 18px; font-weight: bold;">${item.product.name}</td>
+                                <td class="center">${formatWeight(item.weight)} ${item.weightUnit}</td>
+                                <td class="center">${Number(item.weightInQuintals).toFixed(4)} qq</td>
+                                <td class="right">${formatCurrency(item.pricePerQuintal)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="totals" style="margin-top: 30px;">
+                    <div class="total-row grand-total">
+                        <span>SUBTOTAL PRODUCTO</span>
+                        <span>${formatCurrency(item.basePrice)}</span>
+                    </div>
+                </div>
+
+                <div style="margin-top: 40px; font-size: 10px; color: #6b7280;">
+                    <p>Referencia Pesaje General: Bruto: ${report.grossWeight} lb | Tara: ${report.tareWeight} lb | Neto Total: ${report.netWeight} lb</p>
+                </div>
             </div>
 
-            <div class="info-box">
-                <div class="info-label">Conductor</div>
-                <div class="info-value">${report.driverName}</div>
-            </div>
-
-            <div class="info-box">
-                <div class="info-label">Placa</div>
-                <div class="info-value">${report.plateNumber}</div>
-            </div>
-
-            <div class="info-box">
-                <div class="info-label">Usuario</div>
-                <div class="info-value">${report.user?.firstName || 'N/A'}</div>
-            </div>
-        </div>
-
-        <div class="weights">
-            <div class="weight-box">
-                <span>Peso Bruto</span>
-                <strong>${formatWeight(report.grossWeight)} lb</strong>
-            </div>
-            <div class="weight-box">
-                <span>Tara</span>
-                <strong>${formatWeight(report.tareWeight)} lb</strong>
-            </div>
-            <div class="weight-box">
-                <span>Peso Neto</span>
-                <strong>${formatWeight(report.netWeight)} lb</strong>
-            </div>
-        </div>
-
-        <table>
-            <thead>
-                <tr>
-                    <th>Producto</th>
-                    <th class="center">Peso</th>
-                    <th class="center">Quintales</th>
-                    <th class="right">Precio / qq</th>
-                    <th class="right">Subtotal</th>
-                </tr>
-            </thead>
-            <tbody>
-                ${itemsHtml}
-            </tbody>
-        </table>
-
-        <div class="totals">
-            <div class="total-row">
-                <span>Total Base</span>
-                <span>${formatCurrency(report.basePrice)}</span>
-            </div>
-            <div class="total-row grand-total">
-                <span>TOTAL A PAGAR</span>
-                <span>${formatCurrency(report.totalPrice)}</span>
+            <div class="footer">
+                Generado el ${formatDate(new Date())} · Ticket Individual por Producto
             </div>
         </div>
+        `;
+        }).join('');
 
-    </div>
-
-    <div class="footer">
-        Generado el ${formatDate(report.reportDate)}· Documento oficial de pesaje
-    </div>
-</div>
-
-</body>
-</html>
-`;
-
+        return `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <style>
+            /* Aquí incluyes todos tus estilos CSS originales */
+            @page { margin: 10mm; }
+            body { font-family: Arial, sans-serif; }
+            .ticket { max-width: 800px; margin: auto; border: 1px solid #e5e7eb; padding: 10px; }
+            .header { background: #1f2937; color: white; padding: 15px; display: flex; justify-content: space-between; }
+            .content { padding: 20px; }
+            .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+            .info-box { border: 1px solid #eee; padding: 8px; }
+            .badge { padding: 4px 8px; border-radius: 10px; font-size: 10px; }
+            .totals { border-top: 2px solid #333; padding-top: 10px; text-align: right; }
+            .grand-total { font-size: 20px; font-weight: bold; display: flex; justify-content: space-between; }
+            .center { text-align: center; }
+            .right { text-align: right; }
+            .footer { text-align: center; margin-top: 20px; border-top: 1px dashed #ccc; padding: 10px; }
+        </style>
+    </head>
+    <body>
+        ${ticketsHtml}
+    </body>
+    </html>`;
     }
     /* =========================
        GENERAR EXCEL DE REPORTES
@@ -680,10 +553,14 @@ export class ReportsService {
             .orderBy('report.reportDate', 'DESC');
 
         if (startDate && endDate) {
-            qb.andWhere('report.reportDate BETWEEN :start AND :end', {
-                start: startDate,
-                end: endDate,
-            });
+            // qb.andWhere('report.reportDate BETWEEN :start AND :end', 
+            qb.andWhere(
+                'report.reportDate >= :start AND report.reportDate <= :end',
+
+                {
+                    start: startDate,
+                    end: endDate,
+                });
         }
 
         if (supplierId) {
