@@ -33,36 +33,38 @@ export class ReportsService {
      CONVERSIÓN A QUINTALES
   ========================= */
 
-   private convertToQuintals(weight: number, unit: WeightUnit): number {
-    let kilograms: number;
+    private convertToQuintals(weight: number, unit: WeightUnit): number {
+        const LB_PER_KG = 2.20462262;
+        const KG_PER_QUINTAL = 100; // 1 qq = 100 kg
+        const LB_PER_QUINTAL = 220.462262; // más exacto
 
-    switch (unit) {
-        case WeightUnit.QUINTALS:
-            // quintal métrico → kg
-            kilograms = weight * 100;
-            break;
+        let quintals: number;
 
-        case WeightUnit.KILOGRAMS:
-            kilograms = weight;
-            break;
+        switch (unit) {
+            case WeightUnit.QUINTALS:
+                quintals = weight;
+                break;
 
-        case WeightUnit.POUNDS:
-            kilograms = weight / 2.20462262;
-            break;
+            case WeightUnit.KILOGRAMS:
+                quintals = weight / KG_PER_QUINTAL;
+                break;
 
-        case WeightUnit.TONS:
-            // tonelada métrica
-            kilograms = weight * 1000;
-            break;
+            case WeightUnit.POUNDS:
+                quintals = weight / LB_PER_QUINTAL;
+                break;
 
-        default:
-            throw new Error(`Unidad no soportada: ${unit}`);
+            case WeightUnit.TONS:
+                // 1 tonelada métrica = 1000 kg = 10 qq
+                quintals = weight * 10;
+                break;
+
+            default:
+                throw new Error(`Unidad no soportada: ${unit}`);
+        }
+
+        return Number(quintals);
     }
 
-    // kg → quintales métricos
-    const quintals = kilograms / 100;
-    return Number(quintals.toFixed(4));
-}
 
 
 
@@ -195,6 +197,7 @@ export class ReportsService {
         }
 
         const [data, total] = await qb
+            .distinct(true)
             .skip(skip)
             .take(pageSize)
             .getManyAndCount();
@@ -426,7 +429,7 @@ export class ReportsService {
             }).format(Number(amount));
         };
 
-        const formatWeight = (weight: number | string) => Number(weight).toFixed(2);
+        const formatWeight = (weight:    number | string) => Number(weight).toFixed(2);
 
         // Generamos un bloque HTML por cada producto
         const ticketsHtml = report.items.map((item, index) => {
@@ -444,25 +447,6 @@ export class ReportsService {
             </div>
 
             <div class="content">
-                <div class="info-grid">
-                    <div class="info-box">
-                        <div class="info-label">Estado</div>
-                        <div class="info-value">
-                            <span class="badge ${report.state.toLowerCase()}">
-                                ${report.state}
-                            </span>
-                        </div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-label">Proveedor</div>
-                        <div class="info-value">${report.supplier.name}</div>
-                    </div>
-                    <div class="info-box">
-                        <div class="info-label">Placa / Conductor</div>
-                        <div class="info-value">${report.plateNumber} / ${report.driverName}</div>
-                    </div>
-                </div>
-
                 <h3 style="border-bottom: 2px solid #1f2937; padding-bottom: 5px;">Detalle del Producto</h3>
                 
                 <div class="product-detail">

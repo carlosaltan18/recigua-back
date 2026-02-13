@@ -19,6 +19,8 @@ import { CreateReportItemDto } from './dto/create.item.report.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { ParseIntPipe } from '@nestjs/common';
+
 
 @Controller('reports')
 @UseGuards(JwtAuthGuard)
@@ -38,8 +40,8 @@ export class ReportsController {
    */
   @Get()
   findAll(
-    @Query('page') page?: number,
-    @Query('pageSize') pageSize?: number,
+    @Query('page', ParseIntPipe) page = 1,
+    @Query('pageSize', ParseIntPipe) pageSize = 5,
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
     @Query('supplierId') supplierId?: string,
@@ -98,7 +100,7 @@ export class ReportsController {
      * Generar PDF del ticket de un reporte
      */
   @Get(':id/pdf')
-  async generatePdfTicket(@Param('id') id: string,  @Res() res: Response) {
+  async generatePdfTicket(@Param('id') id: string, @Res() res: Response) {
     const pdfBuffer = await this.reportsService.generatePdfTicket(id);
 
     res.set({
